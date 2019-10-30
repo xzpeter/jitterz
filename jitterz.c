@@ -51,6 +51,14 @@ static int move_to_core(int core_i)
 	return sched_setaffinity(0, sizeof(cpus), &cpus);
 }
 
+static int make_it_rt(int rtprio)
+{
+	struct sched_param p;
+
+	p.sched_priority = rtprio;
+	return sched_setscheduler(0, SCHED_FIFO, &p);
+}
+
 static long read_cpuinfo_cur_freq(int core_i)
 {
 	uint64_t fs;
@@ -71,6 +79,7 @@ static long read_cpuinfo_cur_freq(int core_i)
 
 int main(int argc, char* argv[])
 {
+	int rtprio = 5;  /* CMD line parameter */
 	struct timespec tvs, tve;
 	double sec;
 	uint64_t fs, fe, fr;
@@ -81,6 +90,11 @@ int main(int argc, char* argv[])
 
 	/* return of this function must be tested for success */
 	move_to_core(0);
+        if (make_it_rt(rtprio) != 0) {
+		printf("Error while setting SCHED_FIFO policy/priority!");
+		exit(1);
+	}
+
 	fr = fs = 0; fe = 1;
 	while (fs != fe) {
 	retry:
