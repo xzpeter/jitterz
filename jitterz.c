@@ -71,6 +71,7 @@ static long read_cpuinfo_cur_freq(int core_i)
 		fscanf(f, "%lu", &fs);
 		fclose(f);
 	} else {
+		printf("Error reading CPU frequency for core %d!", core_i);
 		exit(1);
 	}
 
@@ -95,7 +96,7 @@ int main(int argc, char* argv[])
 		exit(1);
 	}
         if (make_it_rt(rtprio) != 0) {
-		printf("Error while setting SCHED_FIFO policy/priority!");
+		printf("Error while setting SCHED_FIFO policy, priority %d!", rtprio);
 		exit(1);
 	}
 
