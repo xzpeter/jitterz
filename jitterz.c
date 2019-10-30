@@ -103,7 +103,7 @@ int main(int argc, char* argv[])
 	while (fs != fe) {
 	retry:
 		if (!fr) {
-			fs = read_cpuinfo_cur_freq(0);
+			fs = read_cpuinfo_cur_freq(core);
 			fe = 0;
 		} else {
 			fs = fr;
@@ -170,7 +170,7 @@ int main(int argc, char* argv[])
 		
 		// printf("%f %f\n", sec, 1/sec);
 		if (!fr) {
-			fe = read_cpuinfo_cur_freq(0);
+			fe = read_cpuinfo_cur_freq(core);
 			fe *= 1000;
 		}
 	}
