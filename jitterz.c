@@ -51,31 +51,42 @@ static int move_to_core(int core_i)
 	return sched_setaffinity(0, sizeof(cpus), &cpus);
 }
 
+static long read_cpuinfo_cur_freq(int core_i)
+{
+	uint64_t fs;
+	char path[80];
+	FILE *f = 0;
+
+	snprintf(path, 80, "/sys/devices/system/cpu/cpu%d/cpufreq/cpuinfo_cur_freq", core_i);
+	f = fopen(path, "rt");
+	if (f) {
+		fscanf(f, "%lu", &fs);
+		fclose(f);
+	} else {
+		exit(1);
+	}
+
+	return fs;
+}
+
 int main(int argc, char* argv[])
 {
 	struct timespec tvs, tve;
 	double sec;
 	uint64_t fs, fe, fr;
-	FILE *f = 0;
 	unsigned i, j, rt = 60;
 	uint64_t dt = 1500;
 	struct bucket b[16];
 	uint64_t frs, fre, lt;
 
 	/* return of this function must be tested for success */
-	move_to_core(7);
+	move_to_core(0);
 	fr = fs = 0; fe = 1;
 	while (fs != fe) {
 	retry:
 		if (!fr) {
-			f = fopen("/sys/devices/system/cpu/cpu7/cpufreq/cpuinfo_cur_freq", "rt");
-			if (f) {
-				fscanf(f, "%lu", &fs);
-				fclose(f);
-				fe = 0;
-			} else {
-				exit(1);
-			}
+			fs = read_cpuinfo_cur_freq(0);
+			fe = 0;
 		} else {
 			fs = fr;
 		}
@@ -140,12 +151,8 @@ int main(int argc, char* argv[])
 		
 		// printf("%f %f\n", sec, 1/sec);
 		if (!fr) {
-			f = fopen("/sys/devices/system/cpu/cpu7/cpufreq/cpuinfo_cur_freq", "rt");
-			if (f) {
-				fscanf(f, "%lu", &fe);
-				fclose(f);
-				fe *= 1000;
-			}
+			fe = read_cpuinfo_cur_freq(0);
+			fe *= 1000;
 		}
 	}
 
