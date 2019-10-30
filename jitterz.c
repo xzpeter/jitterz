@@ -43,10 +43,11 @@ struct bucket {
 
 static int move_to_core(int core_i)
 {
-  cpu_set_t cpus;
-  CPU_ZERO(&cpus);
-  CPU_SET(core_i, &cpus);
-  return sched_setaffinity(0, sizeof(cpus), &cpus);
+	cpu_set_t cpus;
+
+	CPU_ZERO(&cpus);
+	CPU_SET(core_i, &cpus);
+	return sched_setaffinity(0, sizeof(cpus), &cpus);
 }
 
 int main(int argc, char* argv[])
@@ -59,7 +60,8 @@ int main(int argc, char* argv[])
 	uint64_t dt = 1500;
 	struct bucket b[16];
 	uint64_t frs, fre, lt;
-	
+
+	/* return of this function must be tested for success */
 	move_to_core(7);
 	fr = fs = 0; fe = 1;
 	while (fs != fe) {
