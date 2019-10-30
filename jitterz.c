@@ -16,6 +16,7 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <inttypes.h>
+#include <time.h>
 #include <string.h>
 #include <errno.h>
 #include <pthread.h>
@@ -52,7 +53,7 @@ static int move_to_core(int core_i)
 
 int main(int argc, char* argv[])
 {
-	struct timeval tvs, tve;
+	struct timespec tvs, tve;
 	double sec;
 	uint64_t fs, fe, fr;
 	FILE *f = 0;
@@ -93,7 +94,7 @@ int main(int argc, char* argv[])
 		fs *= 1000;
 		
 		frs = tsc();
-		gettimeofday(&tvs, NULL);
+		clock_gettime(CLOCK_MONOTONIC_RAW, &tvs);
 		uint64_t s, e, so;
 		
 		for (i = 0; i < rt; i++) {
@@ -125,8 +126,8 @@ int main(int argc, char* argv[])
 			}
 		}
 		fre = tsc();
-		gettimeofday(&tve, NULL);
-		sec = tve.tv_sec - tvs.tv_sec + (tve.tv_usec - tvs.tv_usec) / 1e6;
+		clock_gettime(CLOCK_MONOTONIC_RAW, &tve);
+		sec = tve.tv_sec - tvs.tv_sec + (tve.tv_nsec - tvs.tv_nsec) / 1e9;
 		if ((fabs(sec - rt) / (double)rt) > 0.01) {
 			//printf("%f %u\n", sec, rt);
 			if (fre > frs) {
