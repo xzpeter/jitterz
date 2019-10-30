@@ -120,9 +120,10 @@ int main(int argc, char* argv[])
 		
 		frs = tsc();
 		clock_gettime(CLOCK_MONOTONIC_RAW, &tvs);
-		uint64_t s, e, so;
 		
 		for (i = 0; i < rt; i++) {
+			uint64_t s, e, so;
+
 			s = tsc();
 			e = s;
 			e += fs;
