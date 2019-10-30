@@ -79,6 +79,7 @@ static long read_cpuinfo_cur_freq(int core_i)
 
 int main(int argc, char* argv[])
 {
+	int core = 0;    /* CMD line parameter */
 	int rtprio = 5;  /* CMD line parameter */
 	struct timespec tvs, tve;
 	double sec;
@@ -89,7 +90,10 @@ int main(int argc, char* argv[])
 	uint64_t frs, fre, lt;
 
 	/* return of this function must be tested for success */
-	move_to_core(0);
+        if (move_to_core(core) != 0) {
+		printf("Error while setting thread affinity to core %d!", core);
+		exit(1);
+	}
         if (make_it_rt(rtprio) != 0) {
 		printf("Error while setting SCHED_FIFO policy/priority!");
 		exit(1);
