@@ -151,5 +151,11 @@ int main(int argc, char* argv[])
 		// printf("%lu %lu\n", b[j].s, b[j].c);
 		printf("%lu\n", b[j].c);
 	}
-	printf("Lost time %f\n", (double)lt/(double)fs);
+
+	if (lt != fs) {
+		printf("Lost time %f\n", (double)lt/(double)fs);
+		return 1;
+	}
+
+	return 0;
 }
