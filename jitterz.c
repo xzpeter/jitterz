@@ -3,9 +3,9 @@
  *
  * Copyright 2019 Tom Rix <trix@redhat.com>
  *
- * This program is free software: you can redistribute it and/or modify it
- * under the terms of version 3 of the GNU General Public License
- * as published by the Free Software Foundation.
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License Version
+ * 2 as published by the Free Software Foundation.
  *
  */
 
@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <stdint.h>
+#include <getopt.h>
 #include <unistd.h>
 #include <inttypes.h>
 #include <time.h>
@@ -27,13 +28,20 @@
 #include <sys/types.h>
 #include <math.h>
 
+#define VERSION 0.9
+
+static int cpu = 0;
+static int clocksel = 0;
+static int policy = SCHED_FIFO;
+static int priority = 5;
+
 static inline uint64_t tsc()
 {
 	uint64_t ret = 0;
 	uint32_t l, h;
 	__asm__ __volatile__("lfence");
-	__asm__ __volatile__("rdtsc" : "=a" (l) , "=d" (h));
-	ret = ((uint64_t) h << 32) | l;
+	__asm__ __volatile__("rdtsc" : "=a"(l), "=d"(h));
+	ret = ((uint64_t)h << 32) | l;
 	return ret;
 }
 
@@ -51,12 +59,12 @@ static int move_to_core(int core_i)
 	return sched_setaffinity(0, sizeof(cpus), &cpus);
 }
 
-static int make_it_rt(int rtprio)
+static int set_sched()
 {
-	struct sched_param p;
+	struct sched_param p = { 0 };
 
-	p.sched_priority = rtprio;
-	return sched_setscheduler(0, SCHED_FIFO, &p);
+	p.sched_priority = priority;
+	return sched_setscheduler(0, policy, &p);
 }
 
 static long read_cpuinfo_cur_freq(int core_i)
@@ -65,7 +73,9 @@ static long read_cpuinfo_cur_freq(int core_i)
 	char path[80];
 	FILE *f = 0;
 
-	snprintf(path, 80, "/sys/devices/system/cpu/cpu%d/cpufreq/cpuinfo_cur_freq", core_i);
+	snprintf(path, 80,
+		 "/sys/devices/system/cpu/cpu%d/cpufreq/cpuinfo_cur_freq",
+		 core_i);
 	f = fopen(path, "rt");
 	if (f) {
 		fscanf(f, "%lu", &fs);
@@ -78,10 +88,121 @@ static long read_cpuinfo_cur_freq(int core_i)
 	return fs;
 }
 
-int main(int argc, char* argv[])
+/* Print usage information */
+static void display_help(int error)
 {
-	int core = 0;    /* CMD line parameter */
-	int rtprio = 5;  /* CMD line parameter */
+	printf("jitterz V %1.2f\n", VERSION);
+	printf("Usage:\n"
+	       "jitterz <options>\n\n"
+	       "-c NUM   --cpu=NUM         which cpu to run on"
+	       "         --clock=CLOCK     select clock\n"
+	       "                           0 = CLOCK_MONOTONIC (default)\n"
+	       "                           1 = CLOCK_REALTIME\n"
+	       "-p PRIO  --priority=PRIO   priority of highest prio thread\n"
+	       "	 --policy=NAME     policy of measurement thread, where NAME may be one\n"
+	       "                           of: other, normal, batch, idle, fifo or rr.\n");
+	if (error)
+		exit(EXIT_FAILURE);
+	exit(EXIT_SUCCESS);
+}
+
+static char *policyname(int policy)
+{
+	char *policystr = "";
+
+	switch (policy) {
+	case SCHED_OTHER:
+		policystr = "other";
+		break;
+	case SCHED_FIFO:
+		policystr = "fifo";
+		break;
+	case SCHED_RR:
+		policystr = "rr";
+		break;
+	case SCHED_BATCH:
+		policystr = "batch";
+		break;
+	case SCHED_IDLE:
+		policystr = "idle";
+		break;
+	}
+	return policystr;
+}
+
+static void handlepolicy(char *polname)
+{
+	if (strncasecmp(polname, "other", 5) == 0)
+		policy = SCHED_OTHER;
+	else if (strncasecmp(polname, "batch", 5) == 0)
+		policy = SCHED_BATCH;
+	else if (strncasecmp(polname, "idle", 4) == 0)
+		policy = SCHED_IDLE;
+	else if (strncasecmp(polname, "fifo", 4) == 0)
+		policy = SCHED_FIFO;
+	else if (strncasecmp(polname, "rr", 2) == 0)
+		policy = SCHED_RR;
+	else /* default policy if we don't recognize the request */
+		policy = SCHED_OTHER;
+}
+
+enum option_values {
+	OPT_CPU = 1,
+	OPT_CLOCK,
+	OPT_PRIORITY,
+	OPT_POLICY,
+	OPT_HELP,
+};
+
+/* Process commandline options */
+static void process_options(int argc, char *argv[], int max_cpus)
+{
+	for (;;) {
+		int option_index = 0;
+		/*
+		 * Options for getopt
+		 * Ordered alphabetically by single letter name
+		 */
+		static struct option long_options[] = {
+			{ "clock", required_argument, NULL, OPT_CLOCK },
+			{ "cpu", required_argument, NULL, OPT_CPU },
+			{ "priority", required_argument, NULL, OPT_PRIORITY },
+			{ "policy", required_argument, NULL, OPT_POLICY },
+			{ "help", no_argument, NULL, OPT_HELP },
+			{ NULL, 0, NULL, 0 },
+		};
+		int c = getopt_long(argc, argv, "c:hp:", long_options,
+				    &option_index);
+		if (c == -1)
+			break;
+		switch (c) {
+		case 'c':
+		case OPT_CPU:
+			cpu = atoi(optarg);
+			break;
+		case OPT_CLOCK:
+			clocksel = atoi(optarg);
+			break;
+		case 'p':
+		case OPT_PRIORITY:
+			priority = atoi(optarg);
+			if (policy != SCHED_FIFO && policy != SCHED_RR)
+				policy = SCHED_FIFO;
+			break;
+		case '?':
+		case OPT_HELP:
+			display_help(0);
+			break;
+		case OPT_POLICY:
+			handlepolicy(optarg);
+			break;
+		}
+	}
+}
+
+int main(int argc, char **argv)
+{
+	int max_cpus = sysconf(_SC_NPROCESSORS_ONLN);
 	struct timespec tvs, tve;
 	double sec;
 	uint64_t fs, fe, fr;
@@ -90,21 +211,25 @@ int main(int argc, char* argv[])
 	struct bucket b[16];
 	uint64_t frs, fre, lt;
 
+	process_options(argc, argv, max_cpus);
+
 	/* return of this function must be tested for success */
-        if (move_to_core(core) != 0) {
-		printf("Error while setting thread affinity to core %d!", core);
+	if (move_to_core(cpu) != 0) {
+		printf("Error while setting thread affinity to cpu %d!", cpu);
 		exit(1);
 	}
-        if (make_it_rt(rtprio) != 0) {
-		printf("Error while setting SCHED_FIFO policy, priority %d!", rtprio);
+	if (set_sched() != 0) {
+		printf("Error while setting %s policy, priority %d!",
+		       policyname(policy), priority);
 		exit(1);
 	}
 
-	fr = fs = 0; fe = 1;
+	fr = fs = 0;
+	fe = 1;
 	while (fs != fe) {
 	retry:
 		if (!fr) {
-			fs = read_cpuinfo_cur_freq(core);
+			fs = read_cpuinfo_cur_freq(cpu);
 			fe = 0;
 		} else {
 			fs = fr;
@@ -113,19 +238,19 @@ int main(int argc, char* argv[])
 		uint64_t dt_min = (dt * fs) / 1000000;
 		lt = 0;
 		// printf("%lu\n", dt_min);
-		
+
 		for (j = 0; j < 16; j++) {
 			b[j].c = 0;
 			if (j == 0)
 				b[j].s = dt_min;
 			else
-				b[j].s = b[j-1].s * 2;
+				b[j].s = b[j - 1].s * 2;
 		}
 		fs *= 1000;
-		
+
 		frs = tsc();
 		clock_gettime(CLOCK_MONOTONIC_RAW, &tvs);
-		
+
 		for (i = 0; i < rt; i++) {
 			uint64_t s, e, so;
 
@@ -136,16 +261,18 @@ int main(int argc, char* argv[])
 				goto retry;
 			}
 			so = s;
-			
-			while(1) {
+
+			while (1) {
 				s = tsc();
 				if (s > so) {
 					uint64_t d = s - so;
 					if (d >= dt_min) {
 						lt += d;
 						for (j = 16; j > 0; j--) {
-							if (d >= b[j-1].s) {
-								b[j-1].c = b[j-1].c + 1;
+							if (d >= b[j - 1].s) {
+								b[j - 1].c =
+									b[j - 1].c +
+									1;
 								break;
 							}
 						}
@@ -158,7 +285,8 @@ int main(int argc, char* argv[])
 		}
 		fre = tsc();
 		clock_gettime(CLOCK_MONOTONIC_RAW, &tve);
-		sec = tve.tv_sec - tvs.tv_sec + (tve.tv_nsec - tvs.tv_nsec) / 1e9;
+		sec = tve.tv_sec - tvs.tv_sec +
+		      (tve.tv_nsec - tvs.tv_nsec) / 1e9;
 		if ((fabs(sec - rt) / (double)rt) > 0.01) {
 			//printf("%f %u\n", sec, rt);
 			if (fre > frs) {
@@ -168,10 +296,10 @@ int main(int argc, char* argv[])
 			}
 			goto retry;
 		}
-		
+
 		// printf("%f %f\n", sec, 1/sec);
 		if (!fr) {
-			fe = read_cpuinfo_cur_freq(core);
+			fe = read_cpuinfo_cur_freq(cpu);
 			fe *= 1000;
 		}
 	}
@@ -183,7 +311,7 @@ int main(int argc, char* argv[])
 	}
 
 	if (lt != fs) {
-		printf("Lost time %f\n", (double)lt/(double)fs);
+		printf("Lost time %f\n", (double)lt / (double)fs);
 		return 1;
 	}
 
