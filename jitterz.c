@@ -26,6 +26,7 @@
 #include <stdbool.h>
 #include <sys/sysinfo.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <math.h>
 
 #define VERSION 0.9
@@ -69,22 +70,30 @@ static int set_sched()
 
 static long read_cpuinfo_cur_freq(int core_i)
 {
-	uint64_t fs;
+	uint64_t fs = -1;
 	char path[80];
-	FILE *f = 0;
+	struct stat sb;
 
 	snprintf(path, 80,
 		 "/sys/devices/system/cpu/cpu%d/cpufreq/cpuinfo_cur_freq",
 		 core_i);
-	f = fopen(path, "rt");
-	if (f) {
-		fscanf(f, "%lu", &fs);
-		fclose(f);
+	if (!stat(path, &sb)) {
+		FILE *f = 0;
+		f = fopen(path, "rt");
+		if (f) {
+			fscanf(f, "%lu", &fs);
+			fclose(f);
+		} else {
+			perror(path);
+		}
 	} else {
-		printf("Error reading CPU frequency for core %d!", core_i);
-		exit(1);
+		perror(path);
 	}
 
+	if (fs == (uint64_t) -1 ) {
+		printf("Error reading CPU frequency for core %d\n", core_i);
+		exit(1);
+	}
 	return fs;
 }
 
