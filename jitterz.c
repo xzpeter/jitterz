@@ -34,10 +34,22 @@ static int clocksel;
 static int policy = SCHED_FIFO;
 static int priority = 5;
 
+static struct bucket {
+	uint64_t s;
+	uint64_t c;
+} b[16];
+
+static uint64_t accumulated_lost_ticks;
+static uint64_t delta_time = 1500; /* milli sec */
+static uint64_t delta_tick_min; /* first bucket's tick boundry */
+static uint64_t frequency_start;
+static uint64_t frequency_end;
+static uint64_t frequency_run;
+
 #define CHECK_LOST_TIME()					\
 	do {							\
-		if (d >= dt_min) {				\
-			lt += d;				\
+		if (d >= delta_tick_min) {				\
+			accumulated_lost_ticks += d;		\
 			for (j = 16; j > 0; j--) {		\
 				if (d >= b[j - 1].s) {		\
 					b[j - 1].c =		\
@@ -48,18 +60,24 @@ static int priority = 5;
 		}						\
 	} while (0)						\
 
-static inline uint64_t tsc(void)
+static inline uint64_t time_stamp_counter(void)
 {
-	uint64_t ret = 0;
+	uint64_t ret = -1;
+#if defined(__i386__) || defined(__X86_64__)
 	uint32_t l, h;
 
 	__asm__ __volatile__("lfence");
 	__asm__ __volatile__("rdtsc" : "=a"(l), "=d"(h));
 	ret = ((uint64_t)h << 32) | l;
+#else
+	fprintf(stderr, "Add a time_stamp_counter function for your arch here %s:%d\n",
+		__FILE__, __LINE__);
+	exit(1);
+#endif
 	return ret;
 }
 
-static int move_to_core(int core_i)
+static inline int move_to_core(int core_i)
 {
 	cpu_set_t cpus;
 
@@ -68,7 +86,7 @@ static int move_to_core(int core_i)
 	return sched_setaffinity(0, sizeof(cpus), &cpus);
 }
 
-static int set_sched(void)
+static inline int set_sched(void)
 {
 	struct sched_param p = { 0 };
 
@@ -76,9 +94,9 @@ static int set_sched(void)
 	return sched_setscheduler(0, policy, &p);
 }
 
-static long read_cpuinfo_cur_freq(int core_i)
+static inline long read_cpuinfo_cur_freq(int core_i)
 {
-	uint64_t fs = -1;
+	uint64_t ret = -1;
 	char path[80];
 	struct stat sb;
 	int i;
@@ -96,25 +114,21 @@ static long read_cpuinfo_cur_freq(int core_i)
 
 			f = fopen(path, "rt");
 			if (f) {
-				fscanf(f, "%" PRIu64, &fs);
+				fscanf(f, "%" PRIu64, &ret);
 				fclose(f);
-			} else {
-				perror(path);
 			}
-		} else {
-			perror(path);
 		}
 	}
 
-	if (fs == (uint64_t) -1) {
+	if (ret == (uint64_t) -1) {
 		printf("Error reading CPU frequency for core %d\n", core_i);
 		exit(1);
 	}
-	return fs;
+	return ret;
 }
 
 /* Print usage information */
-static void display_help(int error)
+static inline void display_help(int error)
 {
 	printf("jitterz\n");
 	printf("Usage:\n"
@@ -131,7 +145,7 @@ static void display_help(int error)
 	exit(EXIT_SUCCESS);
 }
 
-static char *policyname(int policy)
+static inline char *policyname(int policy)
 {
 	char *policystr = "";
 
@@ -155,7 +169,7 @@ static char *policyname(int policy)
 	return policystr;
 }
 
-static void handlepolicy(char *polname)
+static inline void handlepolicy(char *polname)
 {
 	if (strncasecmp(polname, "other", 5) == 0)
 		policy = SCHED_OTHER;
@@ -180,7 +194,7 @@ enum option_values {
 };
 
 /* Process commandline options */
-static void process_options(int argc, char *argv[], int max_cpus)
+static inline void process_options(int argc, char *argv[], int max_cpus)
 {
 	for (;;) {
 		int option_index = 0;
@@ -230,14 +244,8 @@ int main(int argc, char **argv)
 	int max_cpus = sysconf(_SC_NPROCESSORS_ONLN);
 	struct timespec tvs, tve;
 	double sec;
-	uint64_t fs, fe, fr;
 	unsigned int i, j, rt = 60;
-	uint64_t dt = 1500;
-	struct bucket {
-		uint64_t s;
-		uint64_t c;
-	} b[16];
-	uint64_t frs, fre, lt;
+	uint64_t frs, fre;
 
 	process_options(argc, argv, max_cpus);
 
@@ -252,37 +260,38 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
-	fr = fs = 0;
-	fe = 1;
-	while (fs != fe) {
+	frequency_run = frequency_start = 0;
+	frequency_end = 1;
+	/* keep running until the start/end cpu frequency is the same */
+	while (frequency_start != frequency_end) {
 retry:
-		if (!fr) {
-			fs = read_cpuinfo_cur_freq(cpu);
-			fe = 0;
+		if (!frequency_run) {
+			frequency_start = read_cpuinfo_cur_freq(cpu);
+			frequency_end = 0;
 		} else {
-			fs = fr;
+			frequency_start = frequency_run;
 		}
-		uint64_t dt_min = (dt * fs) / 1000000;
+		delta_tick_min = (delta_time * frequency_start) / 1000000;
 
-		lt = 0;
+		accumulated_lost_ticks = 0;
 		for (j = 0; j < 16; j++) {
 			b[j].c = 0;
 			if (j == 0)
-				b[j].s = dt_min;
+				b[j].s = delta_tick_min;
 			else
 				b[j].s = b[j - 1].s * 2;
 		}
-		fs *= 1000;
+		frequency_start *= 1000;
 
-		frs = tsc();
+		frs = time_stamp_counter();
 		clock_gettime(CLOCK_MONOTONIC_RAW, &tvs);
 
 		for (i = 0; i < rt; i++) {
 			uint64_t s, e, so;
 
-			s = tsc();
+			s = time_stamp_counter();
 			e = s;
-			e += fs;
+			e += frequency_start;
 			if (e < s)
 				goto retry;
 			so = s;
@@ -290,7 +299,7 @@ retry:
 			while (1) {
 				uint64_t d;
 
-				s = tsc();
+				s = time_stamp_counter();
 				if (s == so)
 					continue;
 
@@ -301,29 +310,26 @@ retry:
 				so = s;
 			}
 		}
-		fre = tsc();
+		fre = time_stamp_counter();
 		clock_gettime(CLOCK_MONOTONIC_RAW, &tve);
 		sec = tve.tv_sec - tvs.tv_sec +
 		      (tve.tv_nsec - tvs.tv_nsec) / 1e9;
 		if ((fabs(sec - rt) / (double)rt) > 0.01) {
 			if (fre > frs) {
-				fr = (fre - frs) / (1000 * sec);
-				fe = fr * 1000;
+				frequency_run = (fre - frs) / (1000 * sec);
+				frequency_end = frequency_run * 1000;
 			}
 			goto retry;
 		}
-		if (!fr) {
-			fe = read_cpuinfo_cur_freq(cpu);
-			fe *= 1000;
+		if (!frequency_run) {
+			frequency_end = read_cpuinfo_cur_freq(cpu);
+			frequency_end *= 1000;
 		}
 	}
 	for (j = 0; j < 16; j++)
 		printf("%" PRIu64 "\n", b[j].c);
 
-	if (lt != fs) {
-		printf("Lost time %f\n", (double)lt / (double)fs);
-		return 1;
-	}
+	printf("Lost time %f\n", (double)accumulated_lost_ticks / (double)frequency_start);
 
 	return 0;
 }
