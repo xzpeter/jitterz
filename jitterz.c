@@ -96,7 +96,7 @@ static long read_cpuinfo_cur_freq(int core_i)
 
 			f = fopen(path, "rt");
 			if (f) {
-				fscanf(f, "%lu", &fs);
+				fscanf(f, "%" PRIu64, &fs);
 				fclose(f);
 			} else {
 				perror(path);
@@ -116,7 +116,7 @@ static long read_cpuinfo_cur_freq(int core_i)
 /* Print usage information */
 static void display_help(int error)
 {
-	printf("jitterz V %1.2f\n", VERSION);
+	printf("jitterz\n");
 	printf("Usage:\n"
 	       "jitterz <options>\n\n"
 	       "-c NUM   --cpu=NUM         which cpu to run on"
@@ -318,7 +318,7 @@ retry:
 		}
 	}
 	for (j = 0; j < 16; j++)
-		printf("%lu\n", b[j].c);
+		printf("%" PRIu64 "\n", b[j].c);
 
 	if (lt != fs) {
 		printf("Lost time %f\n", (double)lt / (double)fs);
