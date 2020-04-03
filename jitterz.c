@@ -27,6 +27,7 @@
 #include <sys/sysinfo.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/mman.h>
 #include <math.h>
 
 static int cpu;
@@ -254,12 +255,17 @@ int main(int argc, char **argv)
 
 	/* return of this function must be tested for success */
 	if (move_to_core(cpu) != 0) {
-		printf("Error while setting thread affinity to cpu %d!", cpu);
+		fprintf(stderr, "Error while setting thread affinity to cpu %d\n", cpu);
 		exit(1);
 	}
 	if (set_sched() != 0) {
-		printf("Error while setting %s policy, priority %d!",
-		       policyname(policy), priority);
+		fprintf(stderr, "Error while setting %s policy, priority %d\n",
+			policyname(policy), priority);
+		exit(1);
+	}
+
+	if (mlockall(MCL_CURRENT|MCL_FUTURE) != 0) {
+		fprintf(stderr, "Error while locking process memory\n");
 		exit(1);
 	}
 
