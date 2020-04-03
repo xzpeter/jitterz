@@ -63,7 +63,7 @@ static uint64_t frequency_run;
 static inline uint64_t time_stamp_counter(void)
 {
 	uint64_t ret = -1;
-#if defined(__i386__) || defined(__X86_64__)
+#if defined(__i386__) || defined(__x86_64__)
 	uint32_t l, h;
 
 	__asm__ __volatile__("lfence");
@@ -94,21 +94,24 @@ static inline int set_sched(void)
 	return sched_setscheduler(0, policy, &p);
 }
 
-static inline long read_cpuinfo_cur_freq(int core_i)
+static inline long read_cpu_current_frequency(int cpu)
 {
 	uint64_t ret = -1;
-	char path[80];
+	char path[256];
 	struct stat sb;
 	int i;
-	char *freq[2] = {
+	char *freq[3] = {
+		/* scaling_cur_freq is current kernel /sys file */
+		"scaling_cur_freq"
+		/* old /sys file is cpuinfo_cur_freq */
 		"cpuinfo_cur_freq",
 		/* assumes a busy wait will be run at the max freq */
 		"cpuinfo_max_freq",
 	};
-	for (i = 0; i < 2; i++) {
-		snprintf(path, 80,
+	for (i = 0; i < 3 && ret == -1; i++) {
+		snprintf(path, 256,
 			 "/sys/devices/system/cpu/cpu%d/cpufreq/%s",
-			 core_i, freq[1]);
+			 cpu, freq[i]);
 		if (!stat(path, &sb)) {
 			FILE *f = 0;
 
@@ -121,7 +124,7 @@ static inline long read_cpuinfo_cur_freq(int core_i)
 	}
 
 	if (ret == (uint64_t) -1) {
-		printf("Error reading CPU frequency for core %d\n", core_i);
+		printf("Error reading CPU frequency for core %d\n", cpu);
 		exit(1);
 	}
 	return ret;
@@ -266,7 +269,7 @@ int main(int argc, char **argv)
 	while (frequency_start != frequency_end) {
 retry:
 		if (!frequency_run) {
-			frequency_start = read_cpuinfo_cur_freq(cpu);
+			frequency_start = read_cpu_current_frequency(cpu);
 			frequency_end = 0;
 		} else {
 			frequency_start = frequency_run;
@@ -322,7 +325,7 @@ retry:
 			goto retry;
 		}
 		if (!frequency_run) {
-			frequency_end = read_cpuinfo_cur_freq(cpu);
+			frequency_end = read_cpu_current_frequency(cpu);
 			frequency_end *= 1000;
 		}
 	}
