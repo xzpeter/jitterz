@@ -318,28 +318,38 @@ int main(int argc, char **argv)
 
 		/* loop over seconds run time */
 		for (i = 0; i < run_time; i++) {
-			uint64_t s, e, so;
+			uint64_t tick, end_tick, old_tick, tick_overflow;
 
-			s = time_stamp_counter();
-			e = s;
-			e += frequency_start;
-			if (e < s)
+			end_tick = old_tick = tick = time_stamp_counter();
+			end_tick += frequency_start;
+			/*
+			 * Overflow check
+			 * If end_tick < tick, there will be an overlow
+			 * Add additional second's worth of ticks so
+			 * we do not have to check inside the while loop
+			 * to cover the case that end_tick is close to
+			 * overflowing.
+			 */
+			tick_overflow = end_tick + frequency_start;
+			if (tick_overflow < tick)
 				goto retry;
-			so = s;
 
-			while (1) {
-				uint64_t d;
-
-				s = time_stamp_counter();
-				if (s == so)
+			/*
+			 * Loop until tick >= end_tick
+			 *
+			 * If the difference in old and current tick
+			 * exceed the minimum tick treshold
+			 *   increment the greatest bucket
+			 *   accumulate total lost ticks
+			 *
+			 * set old_tick to current tick
+			 */
+			while (tick < end_tick) {
+				tick = time_stamp_counter();
+				if (tick == old_tick)
 					continue;
-
-				d = s - so;
-				update_buckets(d);
-
-				if (s >= e)
-					break;
-				so = s;
+				update_buckets(tick - old_tick);
+				old_tick = tick;
 			}
 		}
 		fre = time_stamp_counter();
