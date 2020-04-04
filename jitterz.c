@@ -35,10 +35,11 @@ static int clocksel;
 static int policy = SCHED_FIFO;
 static int priority = 5;
 
+#define NUMBER_BUCKETS 16
 static struct bucket {
-	uint64_t s;
-	uint64_t c;
-} b[16];
+	uint64_t tick_boundry;
+	uint64_t count;
+} b[NUMBER_BUCKETS];
 
 static uint64_t accumulated_lost_ticks;
 static uint64_t delta_time = 1500; /* milli sec */
@@ -47,19 +48,31 @@ static uint64_t frequency_start;
 static uint64_t frequency_end;
 static uint64_t frequency_run;
 
-#define CHECK_LOST_TIME()					\
-	do {							\
-		if (d >= delta_tick_min) {				\
-			accumulated_lost_ticks += d;		\
-			for (j = 16; j > 0; j--) {		\
-				if (d >= b[j - 1].s) {		\
-					b[j - 1].c =		\
-						b[j - 1].c + 1;	\
-					break;			\
-				}				\
-			}					\
-		}						\
-	} while (0)						\
+static inline void initialize_buckets(void) {
+	int i;
+
+	for (i = 0; i < NUMBER_BUCKETS; i++) {
+		b[i].count = 0;
+		if (i == 0)
+			b[i].tick_boundry = delta_tick_min;
+		else
+			b[i].tick_boundry = b[i - 1].tick_boundry * 2;
+	}
+}
+
+static inline void update_buckets(uint64_t ticks) {
+	if (ticks >= delta_tick_min) {
+		int i;
+
+		accumulated_lost_ticks += ticks;
+		for (i = NUMBER_BUCKETS; i > 0; i--) {
+			if (ticks >= b[i - 1].tick_boundry) {
+				b[i - 1].count++;
+				break;
+			}
+		}
+	}
+}
 
 static inline uint64_t time_stamp_counter(void)
 {
@@ -283,13 +296,8 @@ retry:
 		delta_tick_min = (delta_time * frequency_start) / 1000000;
 
 		accumulated_lost_ticks = 0;
-		for (j = 0; j < 16; j++) {
-			b[j].c = 0;
-			if (j == 0)
-				b[j].s = delta_tick_min;
-			else
-				b[j].s = b[j - 1].s * 2;
-		}
+		initialize_buckets();
+
 		frequency_start *= 1000;
 
 		frs = time_stamp_counter();
@@ -313,7 +321,8 @@ retry:
 					continue;
 
 				d = s - so;
-				CHECK_LOST_TIME();
+				update_buckets(d);
+
 				if (s >= e)
 					break;
 				so = s;
@@ -336,7 +345,7 @@ retry:
 		}
 	}
 	for (j = 0; j < 16; j++)
-		printf("%" PRIu64 "\n", b[j].c);
+		printf("%" PRIu64 "\n", b[j].count);
 
 	printf("Lost time %f\n", (double)accumulated_lost_ticks / (double)frequency_start);
 
