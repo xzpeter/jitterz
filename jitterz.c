@@ -6,7 +6,6 @@
  *
  */
 
-
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
@@ -48,7 +47,8 @@ static uint64_t frequency_start;
 static uint64_t frequency_end;
 static uint64_t frequency_run;
 
-static inline void initialize_buckets(void) {
+static inline void initialize_buckets(void)
+{
 	int i;
 
 	for (i = 0; i < NUMBER_BUCKETS; i++) {
@@ -60,7 +60,8 @@ static inline void initialize_buckets(void) {
 	}
 }
 
-static inline void update_buckets(uint64_t ticks) {
+static inline void update_buckets(uint64_t ticks)
+{
 	if (ticks >= delta_tick_min) {
 		int i;
 
@@ -84,7 +85,8 @@ static inline uint64_t time_stamp_counter(void)
 	__asm__ __volatile__("rdtsc" : "=a"(l), "=d"(h));
 	ret = ((uint64_t)h << 32) | l;
 #else
-	fprintf(stderr, "Add a time_stamp_counter function for your arch here %s:%d\n",
+	fprintf(stderr,
+		"Add a time_stamp_counter function for your arch here %s:%d\n",
 		__FILE__, __LINE__);
 	exit(1);
 #endif
@@ -123,8 +125,7 @@ static inline long read_cpu_current_frequency(int cpu)
 		"cpuinfo_max_freq",
 	};
 	for (i = 0; i < 3 && ret == -1; i++) {
-		snprintf(path, 256,
-			 "/sys/devices/system/cpu/cpu%d/cpufreq/%s",
+		snprintf(path, 256, "/sys/devices/system/cpu/cpu%d/cpufreq/%s",
 			 cpu, freq[i]);
 		if (!stat(path, &sb)) {
 			FILE *f = 0;
@@ -137,7 +138,7 @@ static inline long read_cpu_current_frequency(int cpu)
 		}
 	}
 
-	if (ret == (uint64_t) -1) {
+	if (ret == (uint64_t)-1) {
 		printf("Error reading CPU frequency for core %d\n", cpu);
 		exit(1);
 	}
@@ -268,7 +269,8 @@ int main(int argc, char **argv)
 
 	/* return of this function must be tested for success */
 	if (move_to_core(cpu) != 0) {
-		fprintf(stderr, "Error while setting thread affinity to cpu %d\n", cpu);
+		fprintf(stderr,
+			"Error while setting thread affinity to cpu %d\n", cpu);
 		exit(1);
 	}
 	if (set_sched() != 0) {
@@ -277,7 +279,7 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
-	if (mlockall(MCL_CURRENT|MCL_FUTURE) != 0) {
+	if (mlockall(MCL_CURRENT | MCL_FUTURE) != 0) {
 		fprintf(stderr, "Error while locking process memory\n");
 		exit(1);
 	}
@@ -286,7 +288,7 @@ int main(int argc, char **argv)
 	frequency_end = 1;
 	/* keep running until the start/end cpu frequency is the same */
 	while (frequency_start != frequency_end) {
-retry:
+	retry:
 		if (!frequency_run) {
 			frequency_start = read_cpu_current_frequency(cpu);
 			frequency_end = 0;
@@ -347,7 +349,8 @@ retry:
 	for (j = 0; j < 16; j++)
 		printf("%" PRIu64 "\n", b[j].count);
 
-	printf("Lost time %f\n", (double)accumulated_lost_ticks / (double)frequency_start);
+	printf("Lost time %f\n",
+	       (double)accumulated_lost_ticks / (double)frequency_start);
 
 	return 0;
 }
