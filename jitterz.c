@@ -43,12 +43,10 @@ static struct bucket {
 static uint64_t accumulated_lost_ticks;
 static uint64_t delta_time = 1500; /* milli sec */
 static uint64_t delta_tick_min; /* first bucket's tick boundry */
-static uint64_t frequency_start;
-static uint64_t frequency_end;
-static uint64_t frequency_run;
 #define RUN_TIME_DEFAULT 60
 static unsigned int run_time = RUN_TIME_DEFAULT; /* seconds */
-
+/* how close do multiple run's calculated frequency have to be valid */
+#define FREQUENCY_TOLERNCE 0.01
 static inline void initialize_buckets(void)
 {
 	int i;
@@ -272,9 +270,10 @@ int main(int argc, char **argv)
 {
 	int max_cpus = sysconf(_SC_NPROCESSORS_ONLN);
 	struct timespec tvs, tve;
-	double sec;
-	unsigned int i, j;
-	uint64_t frs, fre;
+	double real_duration;
+	unsigned int i;
+	uint64_t test_tick_start, test_tick_end;
+	static uint64_t frequency_start, frequency_run;
 
 	process_options(argc, argv, max_cpus);
 
@@ -295,17 +294,18 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
-	frequency_run = frequency_start = 0;
-	frequency_end = 1;
-	/* keep running until the start/end cpu frequency is the same */
-	while (frequency_start != frequency_end) {
+	frequency_run = 0;
+	frequency_start = read_cpu_current_frequency(cpu);
+	/*
+	 * Start off using the cpu frequency from sysfs
+	 * After each loop
+	 *   calculate the real frequency the whole test
+	 *   run until the real frequency is close enough to the last run
+	 */
+	do {
 	retry:
-		if (!frequency_run) {
-			frequency_start = read_cpu_current_frequency(cpu);
-			frequency_end = 0;
-		} else {
+		if (frequency_run)
 			frequency_start = frequency_run;
-		}
 		delta_tick_min = (delta_time * frequency_start) / 1000000;
 
 		accumulated_lost_ticks = 0;
@@ -313,7 +313,8 @@ int main(int argc, char **argv)
 
 		frequency_start *= 1000;
 
-		frs = time_stamp_counter();
+		/* record the starting tick and clock time for the test */
+		test_tick_start = time_stamp_counter();
 		clock_gettime(CLOCK_MONOTONIC_RAW, &tvs);
 
 		/* loop over seconds run time */
@@ -352,24 +353,22 @@ int main(int argc, char **argv)
 				old_tick = tick;
 			}
 		}
-		fre = time_stamp_counter();
-		clock_gettime(CLOCK_MONOTONIC_RAW, &tve);
-		sec = tve.tv_sec - tvs.tv_sec +
-		      (tve.tv_nsec - tvs.tv_nsec) / 1e9;
-		if ((fabs(sec - run_time) / (double)run_time) > 0.01) {
-			if (fre > frs) {
-				frequency_run = (fre - frs) / (1000 * sec);
-				frequency_end = frequency_run * 1000;
-			}
+		/* Record the test ending tick and clock time */
+		test_tick_end = time_stamp_counter();
+		/* overflow */
+		if (test_tick_end < test_tick_start)
 			goto retry;
-		}
-		if (!frequency_run) {
-			frequency_end = read_cpu_current_frequency(cpu);
-			frequency_end *= 1000;
-		}
-	}
-	for (j = 0; j < 16; j++)
-		printf("%" PRIu64 "\n", b[j].count);
+		clock_gettime(CLOCK_MONOTONIC_RAW, &tve);
+		real_duration = tve.tv_sec - tvs.tv_sec +
+				(tve.tv_nsec - tvs.tv_nsec) / 1e9;
+		frequency_run = (test_tick_end - test_tick_start) /
+				(1000 * real_duration);
+	} while (fabs((frequency_run * 1000) - frequency_start) /
+			 frequency_start >
+		 FREQUENCY_TOLERNCE);
+
+	for (i = 0; i < NUMBER_BUCKETS; i++)
+		printf("%" PRIu64 "\n", b[i].count);
 
 	printf("Lost time %f out of %u seconds\n",
 	       (double)accumulated_lost_ticks / (double)frequency_start,
