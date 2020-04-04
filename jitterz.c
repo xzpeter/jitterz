@@ -46,7 +46,8 @@ static uint64_t delta_tick_min; /* first bucket's tick boundry */
 static uint64_t frequency_start;
 static uint64_t frequency_end;
 static uint64_t frequency_run;
-static unsigned int run_time = 60; /* seconds */
+#define RUN_TIME_DEFAULT 60
+static unsigned int run_time = RUN_TIME_DEFAULT; /* seconds */
 
 static inline void initialize_buckets(void)
 {
@@ -156,6 +157,7 @@ static inline void display_help(int error)
 	       "         --clock=CLOCK     select clock\n"
 	       "                           0 = CLOCK_MONOTONIC (default)\n"
 	       "                           1 = CLOCK_REALTIME\n"
+	       "-d SEC   --duration=SEC    duration of the test in seconds\n"
 	       "-p PRIO  --priority=PRIO   priority of highest prio thread\n"
 	       "         --policy=NAME     policy of measurement thread, where NAME may be one\n"
 	       "                           of: other, normal, batch, idle, fifo or rr.\n");
@@ -207,6 +209,7 @@ static inline void handlepolicy(char *polname)
 enum option_values {
 	OPT_CPU = 1,
 	OPT_CLOCK,
+	OPT_DURATION,
 	OPT_PRIORITY,
 	OPT_POLICY,
 	OPT_HELP,
@@ -224,12 +227,13 @@ static inline void process_options(int argc, char *argv[], int max_cpus)
 		static const struct option long_options[] = {
 			{ "clock", required_argument, NULL, OPT_CLOCK },
 			{ "cpu", required_argument, NULL, OPT_CPU },
+			{ "duration", required_argument, NULL, OPT_DURATION },
 			{ "priority", required_argument, NULL, OPT_PRIORITY },
 			{ "policy", required_argument, NULL, OPT_POLICY },
 			{ "help", no_argument, NULL, OPT_HELP },
 			{ NULL, 0, NULL, 0 },
 		};
-		int c = getopt_long(argc, argv, "c:hp:", long_options,
+		int c = getopt_long(argc, argv, "c:d:hp:", long_options,
 				    &option_index);
 		if (c == -1)
 			break;
@@ -240,6 +244,12 @@ static inline void process_options(int argc, char *argv[], int max_cpus)
 			break;
 		case OPT_CLOCK:
 			clocksel = atoi(optarg);
+			break;
+		case 'd':
+		case OPT_DURATION:
+			run_time = atoi(optarg);
+			if (!run_time)
+				run_time = RUN_TIME_DEFAULT;
 			break;
 		case 'p':
 		case OPT_PRIORITY:
@@ -353,7 +363,7 @@ int main(int argc, char **argv)
 
 	printf("Lost time %f out of %u seconds\n",
 	       (double)accumulated_lost_ticks / (double)frequency_start,
-		run_time);
+	       run_time);
 
 	return 0;
 }
