@@ -46,6 +46,7 @@ static uint64_t delta_tick_min; /* first bucket's tick boundry */
 static uint64_t frequency_start;
 static uint64_t frequency_end;
 static uint64_t frequency_run;
+static unsigned int run_time = 60; /* seconds */
 
 static inline void initialize_buckets(void)
 {
@@ -262,7 +263,7 @@ int main(int argc, char **argv)
 	int max_cpus = sysconf(_SC_NPROCESSORS_ONLN);
 	struct timespec tvs, tve;
 	double sec;
-	unsigned int i, j, rt = 60;
+	unsigned int i, j;
 	uint64_t frs, fre;
 
 	process_options(argc, argv, max_cpus);
@@ -305,7 +306,8 @@ int main(int argc, char **argv)
 		frs = time_stamp_counter();
 		clock_gettime(CLOCK_MONOTONIC_RAW, &tvs);
 
-		for (i = 0; i < rt; i++) {
+		/* loop over seconds run time */
+		for (i = 0; i < run_time; i++) {
 			uint64_t s, e, so;
 
 			s = time_stamp_counter();
@@ -334,7 +336,7 @@ int main(int argc, char **argv)
 		clock_gettime(CLOCK_MONOTONIC_RAW, &tve);
 		sec = tve.tv_sec - tvs.tv_sec +
 		      (tve.tv_nsec - tvs.tv_nsec) / 1e9;
-		if ((fabs(sec - rt) / (double)rt) > 0.01) {
+		if ((fabs(sec - run_time) / (double)run_time) > 0.01) {
 			if (fre > frs) {
 				frequency_run = (fre - frs) / (1000 * sec);
 				frequency_end = frequency_run * 1000;
@@ -349,8 +351,9 @@ int main(int argc, char **argv)
 	for (j = 0; j < 16; j++)
 		printf("%" PRIu64 "\n", b[j].count);
 
-	printf("Lost time %f\n",
-	       (double)accumulated_lost_ticks / (double)frequency_start);
+	printf("Lost time %f out of %u seconds\n",
+	       (double)accumulated_lost_ticks / (double)frequency_start,
+		run_time);
 
 	return 0;
 }
