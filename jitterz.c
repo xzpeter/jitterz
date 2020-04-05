@@ -38,10 +38,11 @@ static int priority = 5;
 static struct bucket {
 	uint64_t tick_boundry;
 	uint64_t count;
+	uint64_t time_boundry;
 } b[NUMBER_BUCKETS];
 
 static uint64_t accumulated_lost_ticks;
-static uint64_t delta_time = 1500; /* milli sec */
+static uint64_t delta_time = 500; /* micro sec */
 static uint64_t delta_tick_min; /* first bucket's tick boundry */
 #define RUN_TIME_DEFAULT 60
 static unsigned int run_time = RUN_TIME_DEFAULT; /* seconds */
@@ -53,10 +54,13 @@ static inline void initialize_buckets(void)
 
 	for (i = 0; i < NUMBER_BUCKETS; i++) {
 		b[i].count = 0;
-		if (i == 0)
+		if (i == 0) {
 			b[i].tick_boundry = delta_tick_min;
-		else
+			b[i].time_boundry = delta_time;
+		} else {
 			b[i].tick_boundry = b[i - 1].tick_boundry * 2;
+			b[i].time_boundry = b[i - 1].time_boundry * 2;
+		}
 	}
 }
 
@@ -367,8 +371,12 @@ int main(int argc, char **argv)
 			 frequency_start >
 		 FREQUENCY_TOLERNCE);
 
-	for (i = 0; i < NUMBER_BUCKETS; i++)
-		printf("%" PRIu64 "\n", b[i].count);
+	for (i = 0; i < NUMBER_BUCKETS; i++) {
+		double t = b[i].time_boundry / 1000000.0;
+		if (t < real_duration) {
+			printf("msec %f : count %" PRIu64 "\n", b[i].time_boundry / 1000.0, b[i].count);
+		}
+	}
 
 	printf("Lost time %f out of %u seconds\n",
 	       (double)accumulated_lost_ticks / (double)frequency_start,
