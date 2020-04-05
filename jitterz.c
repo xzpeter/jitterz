@@ -29,6 +29,7 @@
 #include <sys/mman.h>
 #include <math.h>
 
+#define CPU_DEFAULT 0
 static int cpu;
 static int clocksel;
 static int policy = SCHED_FIFO;
@@ -45,7 +46,7 @@ static uint64_t accumulated_lost_ticks;
 static uint64_t delta_time = 500; /* micro sec */
 static uint64_t delta_tick_min; /* first bucket's tick boundry */
 #define RUN_TIME_DEFAULT 60
-static unsigned int run_time = RUN_TIME_DEFAULT; /* seconds */
+static int run_time = RUN_TIME_DEFAULT; /* seconds */
 /* how close do multiple run's calculated frequency have to be valid */
 #define FREQUENCY_TOLERNCE 0.01
 static inline void initialize_buckets(void)
@@ -97,12 +98,12 @@ static inline uint64_t time_stamp_counter(void)
 	return ret;
 }
 
-static inline int move_to_core(int core_i)
+static inline int move_to_core()
 {
 	cpu_set_t cpus;
 
 	CPU_ZERO(&cpus);
-	CPU_SET(core_i, &cpus);
+	CPU_SET(cpu, &cpus);
 	return sched_setaffinity(0, sizeof(cpus), &cpus);
 }
 
@@ -114,7 +115,7 @@ static inline int set_sched(void)
 	return sched_setscheduler(0, policy, &p);
 }
 
-static inline long read_cpu_current_frequency(int cpu)
+static inline uint64_t read_cpu_current_frequency()
 {
 	uint64_t ret = -1;
 	char path[256];
@@ -168,7 +169,7 @@ static inline void display_help(int error)
 	exit(EXIT_SUCCESS);
 }
 
-static inline char *policyname(int policy)
+static inline char *policyname()
 {
 	char *policystr = "";
 
@@ -218,7 +219,7 @@ enum option_values {
 };
 
 /* Process commandline options */
-static inline void process_options(int argc, char *argv[], int max_cpus)
+static inline void process_options(int argc, char *argv[], long max_cpus)
 {
 	for (;;) {
 		int option_index = 0;
@@ -243,6 +244,8 @@ static inline void process_options(int argc, char *argv[], int max_cpus)
 		case 'c':
 		case OPT_CPU:
 			cpu = atoi(optarg);
+			if (cpu >= max_cpus)
+				cpu = CPU_DEFAULT;
 			break;
 		case OPT_CLOCK:
 			clocksel = atoi(optarg);
@@ -250,7 +253,7 @@ static inline void process_options(int argc, char *argv[], int max_cpus)
 		case 'd':
 		case OPT_DURATION:
 			run_time = atoi(optarg);
-			if (!run_time)
+			if (run_time <= 0)
 				run_time = RUN_TIME_DEFAULT;
 			break;
 		case 'p':
@@ -272,24 +275,24 @@ static inline void process_options(int argc, char *argv[], int max_cpus)
 
 int main(int argc, char **argv)
 {
-	int max_cpus = sysconf(_SC_NPROCESSORS_ONLN);
+	long max_cpus = sysconf(_SC_NPROCESSORS_ONLN);
 	struct timespec tvs, tve;
 	double real_duration;
-	unsigned int i;
+	int i;
 	uint64_t test_tick_start, test_tick_end;
 	static uint64_t frequency_start, frequency_run;
 
 	process_options(argc, argv, max_cpus);
 
 	/* return of this function must be tested for success */
-	if (move_to_core(cpu) != 0) {
+	if (move_to_core() != 0) {
 		fprintf(stderr,
 			"Error while setting thread affinity to cpu %d\n", cpu);
 		exit(1);
 	}
 	if (set_sched() != 0) {
 		fprintf(stderr, "Error while setting %s policy, priority %d\n",
-			policyname(policy), priority);
+			policyname(), priority);
 		exit(1);
 	}
 
@@ -299,7 +302,7 @@ int main(int argc, char **argv)
 	}
 
 	frequency_run = 0;
-	frequency_start = read_cpu_current_frequency(cpu);
+	frequency_start = read_cpu_current_frequency();
 	/*
 	 * Start off using the cpu frequency from sysfs
 	 * After each loop
@@ -367,7 +370,7 @@ int main(int argc, char **argv)
 				(tve.tv_nsec - tvs.tv_nsec) / 1e9;
 		frequency_run = (test_tick_end - test_tick_start) /
 				(1000 * real_duration);
-	} while (fabs((frequency_run * 1000) - frequency_start) /
+	} while (fabs((frequency_run * 1000.) - frequency_start) /
 			 frequency_start >
 		 FREQUENCY_TOLERNCE);
 
@@ -378,7 +381,7 @@ int main(int argc, char **argv)
 		}
 	}
 
-	printf("Lost time %f out of %u seconds\n",
+	printf("Lost time %f out of %d seconds\n",
 	       (double)accumulated_lost_ticks / (double)frequency_start,
 	       run_time);
 
