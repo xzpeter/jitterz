@@ -43,7 +43,7 @@ static struct bucket {
 } b[NUMBER_BUCKETS];
 
 static uint64_t accumulated_lost_ticks;
-static uint64_t delta_time = 500; /* micro sec */
+static uint64_t delta_time = 500; /* nano sec */
 static uint64_t delta_tick_min; /* first bucket's tick boundry */
 #define RUN_TIME_DEFAULT 60
 static int run_time = RUN_TIME_DEFAULT; /* seconds */
@@ -80,6 +80,7 @@ static inline void update_buckets(uint64_t ticks)
 	}
 }
 
+/* Returns clock ticks */
 static inline uint64_t time_stamp_counter(void)
 {
 	uint64_t ret = -1;
@@ -138,6 +139,11 @@ static inline uint64_t read_cpu_current_frequency()
 			f = fopen(path, "rt");
 			if (f) {
 				fscanf(f, "%" PRIu64, &ret);
+				/*
+				 * sysfs interface is in units of KHz
+				 * convert to Hz
+				 */
+				ret *= 1000;
 				fclose(f);
 			}
 		}
@@ -277,10 +283,11 @@ int main(int argc, char **argv)
 {
 	long max_cpus = sysconf(_SC_NPROCESSORS_ONLN);
 	struct timespec tvs, tve;
-	double real_duration;
+	double real_duration; /* sec */
 	int i;
 	uint64_t test_tick_start, test_tick_end;
 	static uint64_t frequency_start, frequency_run;
+	double frequency_diff = 0.0; /* unitless */
 
 	process_options(argc, argv, max_cpus);
 
@@ -313,12 +320,10 @@ int main(int argc, char **argv)
 	retry:
 		if (frequency_run)
 			frequency_start = frequency_run;
-		delta_tick_min = (delta_time * frequency_start) / 1000000;
+		delta_tick_min = (delta_time * frequency_start) / 1000000000; /* ticks/nsec */
 
 		accumulated_lost_ticks = 0;
 		initialize_buckets();
-
-		frequency_start *= 1000;
 
 		/* record the starting tick and clock time for the test */
 		test_tick_start = time_stamp_counter();
@@ -366,18 +371,22 @@ int main(int argc, char **argv)
 		if (test_tick_end < test_tick_start)
 			goto retry;
 		clock_gettime(CLOCK_MONOTONIC_RAW, &tve);
+		/* sec */
 		real_duration = tve.tv_sec - tvs.tv_sec +
 				(tve.tv_nsec - tvs.tv_nsec) / 1e9;
+		/* tick / sec */
 		frequency_run = (test_tick_end - test_tick_start) /
-				(1000 * real_duration);
-	} while (fabs((frequency_run * 1000.) - frequency_start) /
-			 frequency_start >
-		 FREQUENCY_TOLERNCE);
+				(real_duration);
+		frequency_diff = fabs((frequency_run * 1.) - frequency_start) /
+			frequency_start;
+	} while (frequency_diff > FREQUENCY_TOLERNCE);
 
+	fprintf(stdout, "cutoff time (usec) : stall count \n");
 	for (i = 0; i < NUMBER_BUCKETS; i++) {
-		double t = b[i].time_boundry / 1000000.0;
+		double t = b[i].time_boundry / 1000000000.; /* sec */
 		if (t < real_duration) {
-			printf("msec %f : count %" PRIu64 "\n", b[i].time_boundry / 1000.0, b[i].count);
+			double tb = b[i].time_boundry; /* nsec */
+			fprintf(stdout, "%.1f : %" PRIu64 "\n", tb/1000., b[i].count);
 		}
 	}
 
