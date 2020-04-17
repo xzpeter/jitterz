@@ -1,0 +1,39 @@
+.TH JIITERZ 8 "April 1, 2020"
+.SH NAME
+jitterz \- inference of stalls by looking for gaps in executing a tight loop
+.SH SYNOPSIS
+.B jitterz
+.RI "<options>"
+.SH DESCRIPTION
+In a tight loop, measure the time between iterations.
+If the time exceeds a theshold, increment a count in a time
+bucket.  At the end of test print out the buckets.
+.SH OPTIONS
+.B \-c NUM,   \-\-cpu=NUM
+Which cpu to run on
+.br
+.TP
+.B \-\-clock=CLOCK
+select clock
+  0 = CLOCK_MONOTONIC (default)
+  1 = CLOCK_REALTIME
+.br
+.TP
+.B \-d SEC,  \-\-duration=SEC
+Duration of the test in seconds
+.br
+.TP
+.B \-p PRIO,  \-\-priority=PRIO
+Priority of highest prio thread
+.br
+.TP
+.B \-\-policy=NAME
+Policy of measurement thread, where NAME may be one
+of: other, normal, batch, idle, fifo or rr.
+.br
+.TP
+.B \-h, \-\-help
+Display usage
+
+.SH AUTHOR
+jitterz was written by Tom Rix <trix@redhat.com>
