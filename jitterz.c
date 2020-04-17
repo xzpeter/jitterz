@@ -320,7 +320,8 @@ int main(int argc, char **argv)
 	retry:
 		if (frequency_run)
 			frequency_start = frequency_run;
-		delta_tick_min = (delta_time * frequency_start) / 1000000000; /* ticks/nsec */
+		delta_tick_min = (delta_time * frequency_start) /
+				 1000000000; /* ticks/nsec */
 
 		accumulated_lost_ticks = 0;
 		initialize_buckets();
@@ -375,10 +376,10 @@ int main(int argc, char **argv)
 		real_duration = tve.tv_sec - tvs.tv_sec +
 				(tve.tv_nsec - tvs.tv_nsec) / 1e9;
 		/* tick / sec */
-		frequency_run = (test_tick_end - test_tick_start) /
-				(real_duration);
+		frequency_run =
+			(test_tick_end - test_tick_start) / (real_duration);
 		frequency_diff = fabs((frequency_run * 1.) - frequency_start) /
-			frequency_start;
+				 frequency_start;
 	} while (frequency_diff > FREQUENCY_TOLERNCE);
 
 	fprintf(stdout, "cutoff time (usec) : stall count \n");
@@ -386,7 +387,8 @@ int main(int argc, char **argv)
 		double t = b[i].time_boundry / 1000000000.; /* sec */
 		if (t < real_duration) {
 			double tb = b[i].time_boundry; /* nsec */
-			fprintf(stdout, "%.1f : %" PRIu64 "\n", tb/1000., b[i].count);
+			fprintf(stdout, "%.1f : %" PRIu64 "\n", tb / 1000.,
+				b[i].count);
 		}
 	}
 
