@@ -149,7 +149,7 @@ static inline uint64_t read_cpu_current_frequency()
 		}
 	}
 
-	if (ret == (uint64_t)-1) {
+	if (ret == -1) {
 		printf("Error reading CPU frequency for core %d\n", cpu);
 		exit(1);
 	}
