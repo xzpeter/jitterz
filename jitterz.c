@@ -47,6 +47,8 @@ static uint64_t delta_time = 500; /* nano sec */
 static uint64_t delta_tick_min; /* first bucket's tick boundry */
 #define RUN_TIME_DEFAULT 60
 static int run_time = RUN_TIME_DEFAULT; /* seconds */
+static int use_gettime = 1;
+#define NSEC_PER_SEC		1000000000
 /* how close do multiple run's calculated frequency have to be valid */
 #define FREQUENCY_TOLERNCE 0.01
 static inline void initialize_buckets(void)
@@ -84,18 +86,30 @@ static inline void update_buckets(uint64_t ticks)
 static inline uint64_t time_stamp_counter(void)
 {
 	uint64_t ret = -1;
-#if defined(__i386__) || defined(__x86_64__)
-	uint32_t l, h;
 
-	__asm__ __volatile__("lfence");
-	__asm__ __volatile__("rdtsc" : "=a"(l), "=d"(h));
-	ret = ((uint64_t)h << 32) | l;
+	if (use_gettime) {
+		struct timespec ts;
+
+		if (clock_gettime(CLOCK_MONOTONIC, &ts) == -1) {
+			fprintf(stderr, "clock_gettime() call failed: %s\n", strerror(errno));
+			exit (errno);
+		}
+		ret = (uint64_t) ((ts.tv_sec * NSEC_PER_SEC) + ts.tv_nsec);
+	}
+	else {
+#if defined(__i386__) || defined(__x86_64__)
+		uint32_t l, h;
+
+		__asm__ __volatile__("lfence");
+		__asm__ __volatile__("rdtsc" : "=a"(l), "=d"(h));
+		ret = ((uint64_t)h << 32) | l;
 #else
-	fprintf(stderr,
-		"Add a time_stamp_counter function for your arch here %s:%d\n",
-		__FILE__, __LINE__);
-	exit(1);
+		fprintf(stderr,
+			"Add a time_stamp_counter function for your arch here %s:%d\n",
+			__FILE__, __LINE__);
+		exit(1);
 #endif
+	}
 	return ret;
 }
 
@@ -169,7 +183,9 @@ static inline void display_help(int error)
 	       "-d SEC   --duration=SEC    duration of the test in seconds\n"
 	       "-p PRIO  --priority=PRIO   priority of highest prio thread\n"
 	       "         --policy=NAME     policy of measurement thread, where NAME may be one\n"
-	       "                           of: other, normal, batch, idle, fifo or rr.\n");
+	       "                           of: other, normal, batch, idle, fifo or rr.\n"
+	       "         --rdtsc           use inline RDTSC instruction rather than clock_gettime()\n"
+		);
 	if (error)
 		exit(EXIT_FAILURE);
 	exit(EXIT_SUCCESS);
@@ -221,6 +237,7 @@ enum option_values {
 	OPT_DURATION,
 	OPT_PRIORITY,
 	OPT_POLICY,
+	OPT_RDTSC,
 	OPT_HELP,
 };
 
@@ -239,6 +256,7 @@ static inline void process_options(int argc, char *argv[], long max_cpus)
 			{ "duration", required_argument, NULL, OPT_DURATION },
 			{ "priority", required_argument, NULL, OPT_PRIORITY },
 			{ "policy", required_argument, NULL, OPT_POLICY },
+			{ "rdtsc", optional_argument, NULL, OPT_RDTSC },
 			{ "help", no_argument, NULL, OPT_HELP },
 			{ NULL, 0, NULL, 0 },
 		};
@@ -274,6 +292,9 @@ static inline void process_options(int argc, char *argv[], long max_cpus)
 			break;
 		case OPT_POLICY:
 			handlepolicy(optarg);
+			break;
+		case OPT_RDTSC:
+			use_gettime = 0;
 			break;
 		}
 	}
