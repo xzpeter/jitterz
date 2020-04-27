@@ -1,5 +1,5 @@
 TARGETS = jitterz
-CFLAGS		= -O2 -Wall
+CFLAGS		= -O2 -Wall -D _GNU_SOURCE
 
 %: %.c
 	$(CC) $(CFLAGS) $< -o $@
