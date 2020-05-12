@@ -345,6 +345,8 @@ int main(int argc, char **argv)
 	retry:
 		if (frequency_run)
 			frequency_start = frequency_run;
+		printf("Running with expected frequency: %f (MHz)\n",
+			   1.0 * frequency_start / 1e6);
 		delta_tick_min = (delta_time * frequency_start) /
 				 1000000000; /* ticks/nsec */
 
@@ -370,8 +372,10 @@ int main(int argc, char **argv)
 			 * overflowing.
 			 */
 			tick_overflow = end_tick + frequency_start;
-			if (tick_overflow < tick)
+			if (tick_overflow < tick) {
+				printf("Detected tick overflow.  Going to retry.\n");
 				goto retry;
+			}
 
 			/*
 			 * Loop until tick >= end_tick
@@ -394,8 +398,10 @@ int main(int argc, char **argv)
 		/* Record the test ending tick and clock time */
 		test_tick_end = time_stamp_counter();
 		/* overflow */
-		if (test_tick_end < test_tick_start)
+		if (test_tick_end < test_tick_start) {
+			printf("Detected tick overflow.  Going to retry.\n");
 			goto retry;
+		}
 		clock_gettime(CLOCK_MONOTONIC_RAW, &tve);
 		/* sec */
 		real_duration = tve.tv_sec - tvs.tv_sec +
