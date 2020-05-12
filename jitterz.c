@@ -44,7 +44,7 @@ static uint64_t delta_time = 500; /* nano sec */
 static uint64_t delta_tick_min; /* first bucket's tick boundry */
 #define RUN_TIME_DEFAULT 60
 static int run_time = RUN_TIME_DEFAULT; /* seconds */
-static int use_gettime = 1;
+static int use_gettime = 0;             /* default: rdtsc */
 #define NSEC_PER_SEC		1000000000
 /* how close do multiple run's calculated frequency have to be valid */
 #define FREQUENCY_TOLERNCE 0.01
@@ -182,6 +182,8 @@ static inline void display_help(int error)
 	       "         --policy=NAME     policy of measurement thread, where NAME may be one\n"
 	       "                           of: other, normal, batch, idle, fifo or rr.\n"
 	       "         --rdtsc           use inline RDTSC instruction rather than clock_gettime()\n"
+	       "         --gettime         use clock_gettime() rather than inline RDTSC instruction\n"
+	       "                           (default: --rdtsc)\n"
 		);
 	if (error)
 		exit(EXIT_FAILURE);
@@ -236,6 +238,7 @@ enum option_values {
 	OPT_POLICY,
 	OPT_RDTSC,
 	OPT_HELP,
+	OPT_GETTIME,
 };
 
 /* Process commandline options */
@@ -254,6 +257,7 @@ static inline void process_options(int argc, char *argv[], long max_cpus)
 			{ "priority", required_argument, NULL, OPT_PRIORITY },
 			{ "policy", required_argument, NULL, OPT_POLICY },
 			{ "rdtsc", optional_argument, NULL, OPT_RDTSC },
+			{ "gettime", optional_argument, NULL, OPT_GETTIME },
 			{ "help", no_argument, NULL, OPT_HELP },
 			{ NULL, 0, NULL, 0 },
 		};
@@ -292,6 +296,9 @@ static inline void process_options(int argc, char *argv[], long max_cpus)
 			break;
 		case OPT_RDTSC:
 			use_gettime = 0;
+			break;
+		case OPT_GETTIME:
+			use_gettime = 1;
 			break;
 		}
 	}
