@@ -135,7 +135,7 @@ static inline uint64_t read_cpu_current_frequency()
 	int i;
 	char *freq[3] = {
 		/* scaling_cur_freq is current kernel /sys file */
-		"scaling_cur_freq"
+		"scaling_cur_freq",
 		/* old /sys file is cpuinfo_cur_freq */
 		"cpuinfo_cur_freq",
 		/* assumes a busy wait will be run at the max freq */
@@ -156,6 +156,12 @@ static inline uint64_t read_cpu_current_frequency()
 				 */
 				ret *= 1000;
 				fclose(f);
+				/*
+				 * Stop trying others if we get one of the best frequency
+				 * values (note: freq[] should be a prioritized list from high
+				 * to low).
+				 */
+				break;
 			}
 		}
 	}
